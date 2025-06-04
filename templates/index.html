@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ASL Translator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1 class="highlight">ASL Translator</h1>
+        <p class="subheading">Sign to Text Conversion</p>
+    </header>
+
+    <div class="container">
+        <div class="video-column">
+            <img src="{{ url_for('video_feed') }}" width="100%" class="video-frame" />
+        </div>
+        <div class="text-column">
+            <h2>Detected Sentence</h2>
+            <div class="output-box" id="sentence-box"></div>
+            <div class="buttons">
+                <button onclick="clearSentence()">Clear</button>
+                <button onclick="speakSentence()">Speak</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateSentence() {
+            const response = await fetch('/get_sentence');
+            const data = await response.json();
+            document.getElementById('sentence-box').innerText = data.sentence;
+        }
+
+        setInterval(updateSentence, 1000);
+
+        function clearSentence() {
+            fetch('/clear', { method: 'POST' });
+        }
+
+        function speakSentence() {
+            fetch('/speak', { method: 'POST' });
+        }
+        
+    </script>
+</body>
+</html>
+
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <title>ASL Translator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1 class="highlight">ASL Translator</h1>
+        <p class="subheading">Sign to Text Conversion</p>
+    </header>
+
+    <div class="container">
+        <div class="video-column">
+            <img src="{{ url_for('video_feed') }}" width="100%" class="video-frame" />
+        </div>
+        <div class="text-column">
+            <h2>Detected Sentence</h2>
+            <div class="output-box" id="sentence-box"></div>
+            <div class="buttons">
+                <button onclick="clearSentence()">Clear</button>
+                <button onclick="speakSentence()">Speak</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateSentence() {
+            const response = await fetch('/get_sentence');
+            const data = await response.json();
+            document.getElementById('sentence-box').innerText = data.sentence;
+        }
+
+        setInterval(updateSentence, 1000);
+
+        function clearSentence() {
+            fetch('/clear', { method: 'POST' });
+        }
+
+        function speakSentence() {
+            fetch('/speak', { method: 'POST' });
+        }
+    </script>
+</body>
+</html> 
+
+<!--<!DOCTYPE html>
+<html>
+<head>
+    <title>ASL Translator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1 class="highlight">ASL Translator</h1>
+        <p class="subheading">Sign to Text Conversion</p>
+    </header>
+
+    <div class="container">
+        <div class="video-column">
+            <img src="{{ url_for('video_feed') }}" class="video-frame" alt="Live video feed" />
+        </div>
+        <div class="text-column">
+            <h2>Detected Sentence</h2>
+            <div class="output-box" id="sentence-box"></div>
+            <div class="buttons">
+                <button onclick="clearSentence()">Clear</button>
+                <button onclick="speakSentence()">Speak</button>
+            </div>
+            <div id="suggestions" class="suggestion-list"style="margin-top: 10px; color: white;></div>
+
+        </div>
+    </div>
+
+    <script>
+        async function updateSentence() {
+            const res = await fetch('/get_sentence');
+            const data = await res.json();
+            document.getElementById('sentence-box').innerText = data.sentence;
+        }
+
+        setInterval(updateSentence, 1000);
+
+        function clearSentence() {
+            fetch('/clear', { method: 'POST' });
+        }
+
+        function speakSentence() {
+            fetch('/speak', { method: 'POST' });
+        }
+
+
+        
+</script>
+
+</body>
+</html>-->
