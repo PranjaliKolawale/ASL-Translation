@@ -3,10 +3,19 @@ Sign language is one of the communication ways for the people who have hearing i
 
 Model Training
 1. The CNN was trained on 2D hand landmarks extracted using MediaPipe.
-2. Classes: 26 letters + common ASL words + special tokens
+2. Classes: 26 letters + special tokens
 3. Evaluation: ~95% accuracy on validation set
 
+Flow Diagram
+
+<img width="392" alt="flow" src="https://github.com/user-attachments/assets/6e9af1bb-07de-47ff-8efd-823a81b4d875" />
+
+
 Results
+<img width="392" alt="new" src="https://github.com/user-attachments/assets/62deedf0-5ed1-4c4c-9ab9-74790431eb4b" />
+
 <img width="392" alt="Capture" src="https://github.com/user-attachments/assets/f8e5a21f-7365-4d38-8163-fe427187dc2b" />
+
+
 
 
