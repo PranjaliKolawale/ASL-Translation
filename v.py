@@ -1,173 +1,148 @@
 import os
 import cv2
-import time
-import random
 import numpy as np
-from flask import Flask, render_template, Response, jsonify, request, redirect, url_for
-from gtts import gTTS
-from nltk.corpus import words
-from nltk import download
-from rapidfuzz import process
-from collections import deque, Counter
-import tensorflow as tf
 import mediapipe as mp
+import tensorflow as tf
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 
-# -------------------------------
-# Flask Setup
-# -------------------------------
-app = Flask(__name__)
-model = tf.keras.models.load_model("model/asl_hand_landmarks_2dcnn_full_words.h5")
-cap = cv2.VideoCapture(0)
-
-# -------------------------------
-# Global Variables
-# -------------------------------
-letters = [chr(i) for i in range(65, 91)]  # A-Z
-special_tokens = ["Nothing", "Space", "Delete"]
-custom_words = [
-    "I", "apple", "can", "get", "good", "have", "help", "how", "like", "love",
-    "my", "no", "sorry", "thank-you", "want", "yes", "you", "your"
-]
-labels = letters + special_tokens + custom_words
-sentence = ""
-current_word = ""
-prediction_buffer = deque(maxlen=10)
-last_prediction_time = time.time()
-cooldown_seconds = 1.5
-
-# -------------------------------
-# NLP Setup
-# -------------------------------
-try:
-    words.words()
-except:
-    download('words')
-word_list = words.words()
-
-# -------------------------------
-# MediaPipe Setup
-# -------------------------------
+#hand tracking
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-# -------------------------------
-# Extract Landmarks
-# -------------------------------
-def extract_landmarks_from_frame(frame):
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(rgb)
-    if results.multi_hand_landmarks:
-        for hand in results.multi_hand_landmarks:
-            lm = [[pt.x, pt.y, pt.z] for pt in hand.landmark]
-            if len(lm) == 21:
-                return np.array(lm).reshape(1, 21, 3, 1).astype(np.float32)
+#extract 
+def extract_landmarks(frame):
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    result = hands.process(rgb_frame)
+
+    if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            hand_landmark_list = [[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark]
+            if len(hand_landmark_list) == 21:
+                return np.array(hand_landmark_list)  # Shape: (21, 3)
     return None
 
 # -------------------------------
-# Autocomplete Helper
+# Functions to Load Data
 # -------------------------------
-def get_autocomplete_suggestions(query):
-    results = process.extract(query, word_list, limit=5)
-    return [r[0] for r in results]
+def load_train_data(folder_path, X, y):
+    for folder in os.listdir(folder_path):
+        subfolder_path = os.path.join(folder_path, folder)
+        if os.path.isdir(subfolder_path):
+            if folder.lower() == "nothing":
+                label = 26
+            elif folder.lower() == "space":
+                label = 27
+            elif folder.lower() == "delete":
+                label = 28
+            else:
+                label = ord(folder.upper()) - ord('A')
 
-# -------------------------------
-# Flask Routes
-# -------------------------------
-@app.route('/')
-def login():
-    return render_template('login.html')
+            for filename in os.listdir(subfolder_path):
+                if filename.endswith(".jpg"):
+                    img_path = os.path.join(subfolder_path, filename)
+                    img = cv2.imread(img_path)
+                    if img is None:
+                        print(f"Failed to read image {img_path}")
+                        continue
+                    landmarks = extract_landmarks(img)
+                    if landmarks is not None:
+                        X.append(landmarks)
+                        y.append(label)
+                        print(f"✅ Processed {filename}")
+                    else:
+                        print(f"❌ Skipping {filename} (no landmarks detected)")
 
-@app.route('/login', methods=['POST'])
-def handle_login():
-    if request.form['username'] == 'testuser' and request.form['password'] == 'pass@123':
-        return redirect(url_for('index'))
-    return "Invalid credentials, please try again."
-
-@app.route('/index')
-def index():
-    return render_template('index.html', sentence=sentence)
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/get_sentence')
-def get_sentence():
-    return jsonify(sentence=sentence)
-
-@app.route('/current_word')
-def get_current_word():
-    return jsonify(current_word=current_word)
-
-@app.route('/clear', methods=['POST'])
-def clear_sentence():
-    global sentence, current_word
-    sentence = ""
-    current_word = ""
-    return jsonify(message="cleared")
-
-@app.route('/speak', methods=['POST'])
-def speak_sentence():
-    global sentence
-    tts = gTTS(text=sentence, lang='en')
-    filename = f"temp_{random.randint(1000,9999)}.mp3"
-    tts.save(filename)
-    os.system(f"start {filename}" if os.name == "nt" else f"afplay {filename}")
-    return jsonify(message="spoken")
-
-@app.route('/autocomplete')
-def autocomplete():
-    query = request.args.get('query', '')
-    return jsonify(suggestions=get_autocomplete_suggestions(query))
+def load_test_data(folder_path, X, y):
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".jpg"):
+            img_path = os.path.join(folder_path, filename)
+            img = cv2.imread(img_path)
+            if img is None:
+                print(f"Failed to read image {img_path}")
+                continue
+            landmarks = extract_landmarks(img)
+            if landmarks is not None:
+                X.append(landmarks)
+                label = ord(filename[0].upper()) - ord('A')
+                if filename.lower().startswith('nothing'):
+                    label = 26
+                elif filename.lower().startswith('space'):
+                    label = 27
+                elif filename.lower().startswith('delete'):
+                    label = 28
+                y.append(label)
+                print(f"✅ Processed {filename}")
+            else:
+                print(f"❌ Skipping {filename} (no landmarks detected)")
 
 # -------------------------------
-# Frame Generator
+# Load and Preprocess Data
 # -------------------------------
-def generate_frames():
-    global sentence, current_word, last_prediction_time
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+train_data_path = r"C:\Users\HP\Desktop\ASL\ASL_Alphabet_Dataset\asl_alphabet_train"
+test_data_path = r"C:\Users\HP\Desktop\ASL\ASL_Alphabet_Dataset\asl_alphabet_test"
 
-        current_char = "..."
+X_train, y_train = [], []
+X_test, y_test = [], []
 
-        landmarks = extract_landmarks_from_frame(frame)
-        if landmarks is not None:
-            prediction = model.predict(landmarks)
-            class_idx = np.argmax(prediction)
-            predicted_label = labels[class_idx]
-            current_char = predicted_label
-            prediction_buffer.append(predicted_label)
+load_train_data(train_data_path, X_train, y_train)
+load_test_data(test_data_path, X_test, y_test)
 
-            if len(prediction_buffer) == prediction_buffer.maxlen:
-                most_common, freq = Counter(prediction_buffer).most_common(1)[0]
-                if freq > 7 and (time.time() - last_prediction_time) > cooldown_seconds:
-                    if most_common == "Space":
-                        sentence += " "
-                        current_word = ""
-                    elif most_common == "Delete":
-                        sentence = sentence[:-1]
-                        current_word = current_word[:-1]
-                    elif most_common == "Nothing":
-                        pass
-                    elif most_common in custom_words:  # full word
-                        sentence += " " + most_common
-                        current_word = ""
-                    else:  # it's a letter
-                        sentence += most_common
-                        current_word += most_common
-                    last_prediction_time = time.time()
+# Convert to numpy arrays and reshape for 2D CNN
+X_train = np.array(X_train, dtype=np.float32).reshape(-1, 21, 3, 1)  # Shape: (samples, 21, 3, 1)
+y_train = np.array(y_train)
+X_test = np.array(X_test, dtype=np.float32).reshape(-1, 21, 3, 1)
+y_test = np.array(y_test)
 
-        # Display predicted label
-        cv2.putText(frame, f"Predicted: {current_char}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+if len(X_train) > 0 and len(y_train) > 0:
+    print(f"✅ Training samples: {len(X_train)}, Labels: {len(y_train)}")
+    X_train = X_train / np.max(X_train)
+    y_train = to_categorical(y_train, num_classes=29)
+else:
+    print("❌ No training data loaded.")
 
-        _, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+if len(X_test) > 0 and len(y_test) > 0:
+    print(f"✅ Testing samples: {len(X_test)}, Labels: {len(y_test)}")
+    X_test = X_test / np.max(X_test)
+    y_test = to_categorical(y_test, num_classes=29)
+else:
+    print("❌ No testing data loaded.")
 
 # -------------------------------
-# Main Entry
+# Define, Train, and Save 2D CNN Model
 # -------------------------------
-if __name__ == "__main__":
-    app.run(debug=True)
+if len(X_train) > 0 and len(y_train) > 0 and len(X_test) > 0 and len(y_test) > 0:
+    model = Sequential([
+    Conv2D(64, (2, 2), activation='relu', padding='same', input_shape=(21, 3, 1)),
+    MaxPooling2D(pool_size=(2, 1)),
+
+    Conv2D(128, (2, 2), activation='relu', padding='same'),
+    MaxPooling2D(pool_size=(2, 1)),
+
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.3),
+    Dense(64, activation='relu'),
+    Dropout(0.3),
+    Dense(29, activation='softmax')
+    ])
+
+    model.compile(optimizer='adam',
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy'])
+
+    print("🚀 Training 2D CNN model...")
+    history = model.fit(
+        X_train, y_train,
+        epochs=20,
+        batch_size=32,
+        validation_data=(X_test, y_test)
+    )
+    print("✅ 2D CNN Model Training Complete!")
+
+    model.save("asl_hand_landmarks_2dcnn.h5")
+    print("📁 Model saved as 'asl_hand_landmarks_2dcnn.h5'")
+
+else:
+    print("❌ Error: Training or testing data not properly loaded.")
